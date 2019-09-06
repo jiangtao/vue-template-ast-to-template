@@ -82,6 +82,8 @@ export default class TemplateGenertor {
     const directives = [
       this.genVIf(node),
       this.genVFor(node),
+      this.genVRef(node), // v-ref
+      this.genVEl(node), // v-el
       this.genEvents(node),
       this.genVShow(node),
       this.genVModel(node),
@@ -92,6 +94,8 @@ export default class TemplateGenertor {
       this.genVPre(node),
       this.genVText(node)
     ]
+
+    console.log('vnode',node)
 
     const attrs = [
       this.genAttrs(node),
@@ -131,6 +135,9 @@ export default class TemplateGenertor {
     const { text = '' } = node
     return text
   }
+  genRef(node: ASTNode): string {
+    return <string>this.getDomAttrFromAttrsMap(node, 'ref', true)
+  }
 
   genVIf(node: ASTNode): string {
     if (node.if) {
@@ -144,6 +151,18 @@ export default class TemplateGenertor {
   }
   genVFor(node: ASTNode): string {
     return <string>this.getDirectiveFromAttrsMap(node, 'for', true)
+  }
+  private genVv1(node: ASTNode, key: string): string {
+    if(!node.directives) return ''
+    const directive = node.directives.find(({name}) => name === key)
+    if(directive && directive.rawName && directive.arg) return <string>directive.rawName
+    return ''
+  }
+  genVRef(node: ASTNode): string {
+    return this.genVv1(node, 'ref')
+  }
+  genVEl(node: ASTNode): string {
+    return this.genVv1(node, 'el')
   }
   genKey(node: ASTNode): string {
     return <string>this.getPropFromAttrsMap(node, 'key', true)
@@ -243,15 +262,13 @@ export default class TemplateGenertor {
   genVText(node: ASTNode): string {
     return <string>this.getDirectiveFromAttrsMap(node, 'text', true)
   }
-  genRef(node: ASTNode): string {
-    return <string>this.getDomAttrFromAttrsMap(node, 'ref', true)
-  }
   genSlot(node: ASTNode): string {
     if (node.tag === 'slot') {
       return <string>this.getDomAttrFromAttrsMap(node, 'name', true)
     }
     return ''
   }
+
   getDirectiveFromAttrsMap(
     node: ASTNode,
     name: builtInDirectives,
@@ -263,6 +280,7 @@ export default class TemplateGenertor {
     }
     let res: BaseNodeAttr | NodeAttr
     const directive = DIRECTIVES[name] || DIRECTIVES[<builtInDirectives>alias]
+
     const emptyMap = Object.assign({}, emptyBaseNodeAttr)
     const { attrsMap = {} } = node
     if (!directive) {
@@ -270,6 +288,8 @@ export default class TemplateGenertor {
     } else {
       const dirReg = new RegExp(directive)
       const realDir = Object.keys(attrsMap).find(attr => dirReg.test(attr))
+
+      
       res = realDir
         ? attrsMap[realDir]
           ? {
@@ -283,12 +303,13 @@ export default class TemplateGenertor {
     }
     return needNormalize ? this.normalizeMap(res) : res
   }
-  // TODO:
+
   getPropFromAttrsMap(node: ASTNode, name: string, needNormalize?: boolean): string | NodeAttr {
     const { attrsMap = {} } = node
     const emptyMap = Object.assign({}, emptyBaseNodeAttr)
     const value =
       attrsMap[`:${name}`] || attrsMap[`${DIRECTIVES.bind}:${name}`]
+      console.log('v',attrsMap)
     let res: BaseNodeAttr = !value
       ? emptyMap
       : { name: `:${name}`, value: `"${value}"` }

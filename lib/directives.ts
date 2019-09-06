@@ -12,7 +12,9 @@ enum DIRECTIVES {
   slot = 'v-slot',
   pre = 'v-pre',
   cloak = 'v-cloak',
-  once = 'v-once'
+  once = 'v-once',
+  el = 'v-el',
+  ref = 'v-ref'
 }
 
 export default DIRECTIVES

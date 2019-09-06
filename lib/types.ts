@@ -32,3 +32,5 @@ export type builtInDirectives =
   | 'pre'
   | 'cloak'
   | 'once'
+  | 'el'
+  | 'ref'
