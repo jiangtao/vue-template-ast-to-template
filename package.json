@@ -4,8 +4,9 @@
   "description": "transform vue template ast to the template what you want",
   "main": "dist/index.js",
   "scripts": {
-    "bundle": "rollup --config",
-    "typings": "tsc -d --declarationDir typings"
+    "bundle": "rollup --config -w",
+    "typings": "tsc -d --declarationDir typings",
+    "test": "jest test"
   },
   "repository": {
     "type": "git",
@@ -23,6 +24,7 @@
     "vue-template-compiler": "^2.6.10"
   },
   "devDependencies": {
+    "jest": "^24.9.0",
     "rollup": "^1.10.1",
     "rollup-plugin-commonjs": "^9.3.4",
     "rollup-plugin-node-resolve": "^4.2.3",

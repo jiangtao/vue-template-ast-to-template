@@ -1,5 +1,8 @@
+/**
+ * @author Powered by jiangtao  template parser for hex
+ * @version 0.1.0
+ */
 import { isUnaryTag, removeQuotes, isNotEmpty, isBoolean } from './utils'
-import AstGenerator from './ast'
 import {
   TemplateGenertorRes,
   BaseNodeAttr,
@@ -95,13 +98,13 @@ export default class TemplateGenertor {
       this.genVPre(node),
       this.genVText(node)
     ]
+
     const attrs = [
       this.genAttrs(node),
       this.genStyle(node),
       this.genClass(node),
       // 特殊特性
       this.genKey(node),
-      this.genIs(node),
       this.genRef(node),
       this.genSlot(node)
     ]
@@ -130,30 +133,78 @@ export default class TemplateGenertor {
   }
 
   genText(node: ASTNode): string {
-    const { text = '' } = node
+      let { text = '' } = node
+      const id = this.options.id
+      const matchReg = /\{\{\s*(\w+)\s*\}\}/g;
+      const reg = /\{\{|\}\}/g
+      text = text.replace(matchReg, ($0, $1) => {
+          return `{{ ${$1} }}`
+      })
     return text
   }
   genRef(node: ASTNode): string {
-    return <string>this.getDomAttrFromAttrsMap(node, 'ref', true)
+    return <string>this.getDomAttrFromAttrsMap(node, 'ref', true, true)
+  }
+
+  private transformFunctionValue(value: string): string {
+      const reg = /\(.*\)$/
+      const values = value.match(reg)
+      if(values && values.index) {
+          return `${value.substring(0, values.index)}_${this.options.id}${values[0]}`
+      }
+      return `${removeQuotes(value)}_${this.options.id}`
+  }
+  private transformValue(value: string, name?: string, type?:string): string {
+      if(this.options.id) {
+          if(!name) return this.transformFunctionValue(value.trim())
+          let tmpValue
+          switch (name) {
+              case 'v-for':
+                  tmpValue = removeQuotes(value).split(/\s+in\s+/g).filter(Boolean)
+                  tmpValue[tmpValue.length - 1] = `${this.transformFunctionValue(tmpValue[tmpValue.length - 1].trim())}`
+                  tmpValue[tmpValue.length - 1] = removeQuotes(tmpValue[tmpValue.length - 1]);
+                  return `${tmpValue.join(' in ')}`
+              case 'directive':
+                  tmpValue = removeQuotes(value).split(':')
+                  tmpValue[tmpValue.length - 1] = `${this.transformFunctionValue(tmpValue[tmpValue.length - 1].trim())}`
+                  return tmpValue.join(':')
+              default:
+                  if(type === 'directive') {
+                      tmpValue = value.split(/["']/g).filter(Boolean).pop()
+                      if(tmpValue) {
+                          // TODO: 处理  & | && || 等运算符
+                          return this.transformFunctionValue(tmpValue.trim())
+                      } else {
+                          return value
+                      }
+                  } else {
+                      return this.transformFunctionValue(removeQuotes(value).trim())
+                  }
+
+          }
+      }
+      return value;
   }
 
   genVIf(node: ASTNode): string {
     if (node.if) {
-      return `${DIRECTIVES.if}="${node.if}"`
+      return `${DIRECTIVES.if}=${this.transformValue(node.if)}`
     } else if (node.elseif) {
-      return `${DIRECTIVES.elseif}="${node.elseif}"`
+      return `${DIRECTIVES.elseif}=${this.transformValue(node.elseif)}`
     } else if (node.else) {
       return `${DIRECTIVES.else}`
     }
     return ''
   }
   genVFor(node: ASTNode): string {
-    return <string>this.getDirectiveFromAttrsMap(node, 'for', true)
+      return <string>this.getDirectiveFromAttrsMap(node, 'for', true, true)
   }
   private genVv1(node: ASTNode, key: string): string {
     if(!node.directives) return ''
     const directive = node.directives.find(({name}) => name === key)
-    if(directive && directive.rawName && directive.arg) return <string>directive.rawName
+    if(directive && directive.rawName && directive.arg) {
+        return <string>this.transformValue(directive.rawName, 'directive')
+    }
     return ''
   }
   genVRef(node: ASTNode): string {
@@ -163,14 +214,14 @@ export default class TemplateGenertor {
     return this.genVv1(node, 'el')
   }
   genKey(node: ASTNode): string {
-    return <string>this.getPropFromAttrsMap(node, 'key', true)
+    return <string>this.getPropFromAttrsMap(node, 'key', true, true)
   }
   genEvents(node: ASTNode): string {
     const { attrsMap = {} } = node
     return Object.keys(attrsMap)
       .map(attr => {
         if (onReg.test(attr)) {
-          return `${attr}="${attrsMap[attr]}"`
+          return `${attr}="${this.transformValue(removeQuotes(attrsMap[attr]), 'events')}"`
         }
         return ''
       })
@@ -178,7 +229,7 @@ export default class TemplateGenertor {
       .join(' ')
   }
   genVShow(node: ASTNode): string {
-    return <string>this.getDirectiveFromAttrsMap(node, 'show', true)
+    return <string>this.getDirectiveFromAttrsMap(node, 'show', true, true)
   }
   genVModel(node: ASTNode): string {
     return <string>this.getDirectiveFromAttrsMap(node, 'model', true)
@@ -190,6 +241,7 @@ export default class TemplateGenertor {
    */
   genVBind(node: ASTNode): string {
     const { attrsMap = {} } = node
+      const vFor = attrsMap['v-for']
     return Object.keys(attrsMap)
       .map(attr => {
         const isPreservedProperty = preserveBindingReg.test(attr)
@@ -198,8 +250,13 @@ export default class TemplateGenertor {
         }
 
         const matched = attr.match(customPropertyReg)
-        if (matched) {
-          return `${matched[0]}="${attrsMap[attr]}"`
+          if (matched) {
+              const isTransformVForKey = this._isTransformVForKey(attrsMap['v-for'], attrsMap[attr], matched[0]);
+
+              const value = isTransformVForKey ?
+                  this.transformValue(removeQuotes(attrsMap[attr]), matched[0]) :
+                  removeQuotes(attrsMap[attr])
+          return `${matched[0]}="${value}"`
         }
         return ''
       })
@@ -217,8 +274,7 @@ export default class TemplateGenertor {
       return ''
     }
     const attrsMapKeys = Object.keys(attrsMap)
-
-    return attrs
+    const s =  attrs
       .map(attr => {
         const { name, value } = attr
         return attrsMapKeys.find(
@@ -231,18 +287,19 @@ export default class TemplateGenertor {
       })
       .filter(isNotEmpty)
       .join(' ')
+    return s;
   }
   genIs(node: ASTNode): string {
-    return <string>this.getPropFromAttrsMap(node, 'is', true)
+    return <string>this.getPropFromAttrsMap(node, 'is', true, true)
   }
   genStyle(node: ASTNode): string {
-    const bindStyle = <string>this.getPropFromAttrsMap(node, 'style', true)
-    const staticStyle = <string>this.getDomAttrFromAttrsMap(node, 'style', true)
+    const bindStyle = <string>this.getPropFromAttrsMap(node, 'style', true, true)
+    const staticStyle = <string>this.getDomAttrFromAttrsMap(node, 'style', true, false)
     return `${bindStyle} ${staticStyle}`
   }
   genClass(node: ASTNode): string {
-    const bindClass = <string>this.getPropFromAttrsMap(node, 'class', true)
-    const staticClass = <string>this.getDomAttrFromAttrsMap(node, 'class', true)
+    const bindClass = <string>this.getPropFromAttrsMap(node, 'class', true, true)
+    const staticClass = <string>this.getDomAttrFromAttrsMap(node, 'class', true, false)
     return `${bindClass} ${staticClass}`
   }
   genVOnce(node: ASTNode): string {
@@ -262,7 +319,7 @@ export default class TemplateGenertor {
   }
   genSlot(node: ASTNode): string {
     if (node.tag === 'slot') {
-      return <string>this.getDomAttrFromAttrsMap(node, 'name', true)
+      return <string>this.getDomAttrFromAttrsMap(node, 'name', true, false)
     }
     return ''
   }
@@ -286,8 +343,6 @@ export default class TemplateGenertor {
     } else {
       const dirReg = new RegExp(directive)
       const realDir = Object.keys(attrsMap).find(attr => dirReg.test(attr))
-
-
       res = realDir
         ? attrsMap[realDir]
           ? {
@@ -299,10 +354,15 @@ export default class TemplateGenertor {
             })
         : emptyMap
     }
-    return needNormalize ? this.normalizeMap(res) : res
+    return needNormalize ? this.normalizeMap(res, 'directive', true) : res
   }
 
-  getPropFromAttrsMap(node: ASTNode, name: string, needNormalize?: boolean): string | NodeAttr {
+  getPropFromAttrsMap(
+      node: ASTNode,
+      name: string,
+      needNormalize?: boolean,
+      needTransform?: boolean
+  ): string | NodeAttr {
     const { attrsMap = {} } = node
     const emptyMap = Object.assign({}, emptyBaseNodeAttr)
     const value =
@@ -310,9 +370,15 @@ export default class TemplateGenertor {
     let res: BaseNodeAttr = !value
       ? emptyMap
       : { name: `:${name}`, value: `"${value}"` }
-    return needNormalize ? this.normalizeMap(res) : res
+    const vFor = attrsMap['v-for']
+    return needNormalize ? this.normalizeMap(res, name, needTransform, vFor) : res
   }
-  getDomAttrFromAttrsMap(node: ASTNode, name: string, needNormalize?: boolean): string | NodeAttr {
+  getDomAttrFromAttrsMap(
+      node: ASTNode,
+      name: string,
+      needNormalize?: boolean,
+      needTransform?: boolean
+  ): string | NodeAttr {
     const { attrsMap = {} } = node
     const emptyMap = Object.assign({}, emptyBaseNodeAttr)
     let res: BaseNodeAttr
@@ -321,14 +387,21 @@ export default class TemplateGenertor {
     } else {
       res = emptyMap
     }
-    return needNormalize ? this.normalizeMap(res) : res
+    return needNormalize ? this.normalizeMap(res, name,needTransform) : res
   }
-  normalizeMap(res: NodeAttr): string {
+  _isTransformVForKey(vFor: string|undefined, value: string, name?: string):boolean {
+    if(name === 'v-for') return true
+      if(vFor) return !vFor.includes(removeQuotes(value))
+      return true
+  }
+  normalizeMap(res: NodeAttr, type?: string, needTransform?:boolean, vFor?:string): string {
     const { name, value, noMap } = res
-    if (noMap && name) {
+      if (noMap && name) {
       return name
     } else if (name && value) {
-      return `${name}=${value}`
+      return needTransform && this._isTransformVForKey(vFor, value, name)
+          ? `${name}="${this.transformValue(removeQuotes(value), name, type)}"`
+          : `${name}=${value}`
     } else {
       return ''
     }
