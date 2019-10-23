@@ -138,7 +138,7 @@ export default class TemplateGenertor {
       const matchReg = /\{\{\s*(\w+)\s*\}\}/g;
       const reg = /\{\{|\}\}/g
       text = text.replace(matchReg, ($0, $1) => {
-          return `{{ ${$1} }}`
+          return `{{ ${$1}_${id} }}`
       })
     return text
   }
